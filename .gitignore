@@ -1,0 +1,30 @@
+# PlatformIO / ESP-IDF
+.pio/
+.vscode/
+.idea/
+build/
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+sdkconfig.*.old
+compile_commands.json
+.clangd/
+.cache/
+
+# Логи и дампы монитора
+*.log
+*.elf
+*.bin
+*.map
+
+# Локальные секреты и настройки (Wi-Fi, MQTT)
+secrets.*
+*.local
+
+# ОС / редакторы
+.DS_Store
+Thumbs.db
+*.swp
+*~
+*.bat
