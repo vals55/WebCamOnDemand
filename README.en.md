@@ -2,6 +2,14 @@
 
 **English** | [Русский](README.md)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](CHANGELOG.md)
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP--IDF-orange?logo=platformio&logoColor=white)](https://platformio.org/)
+[![Boards](https://img.shields.io/badge/boards-ESP32--CAM%20%7C%20ESP32--S3--CAM-red?logo=espressif&logoColor=white)](#supported-boards)
+[![Language: C](https://img.shields.io/badge/language-C-00599C?logo=c&logoColor=white)](src)
+[![MQTT](https://img.shields.io/badge/MQTT-supported-660066?logo=mqtt&logoColor=white)](#mqtt)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-discovery-41BDF5?logo=homeassistant&logoColor=white)](#mqtt)
+
 A battery-powered camera built on ESP32-CAM / ESP32-S3-CAM. Most of the time the device is in deep sleep; it periodically wakes up, saves a photo and/or short video to an SD card, then sleeps again. On demand (button, timer, MQTT command) it starts a Wi-Fi server with snapshot and MJPEG stream, and goes back to sleep after the client disconnects (or an idle timeout).
 
 ## Features
@@ -110,4 +118,4 @@ Commands are processed at the next wake-up that has a network session (the camer
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Set the author name in the file before publishing.
+MIT, see [LICENSE](LICENSE).

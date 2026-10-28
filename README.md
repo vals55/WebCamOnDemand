@@ -2,6 +2,14 @@
 
 [English](README.en.md) | **Русский**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue)](CHANGELOG.md)
+[![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP--IDF-orange?logo=platformio&logoColor=white)](https://platformio.org/)
+[![Boards](https://img.shields.io/badge/boards-ESP32--CAM%20%7C%20ESP32--S3--CAM-red?logo=espressif&logoColor=white)](#поддерживаемые-платы)
+[![Language: C](https://img.shields.io/badge/language-C-00599C?logo=c&logoColor=white)](src)
+[![MQTT](https://img.shields.io/badge/MQTT-supported-660066?logo=mqtt&logoColor=white)](#mqtt)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-discovery-41BDF5?logo=homeassistant&logoColor=white)](#mqtt)
+
 Автономная камера на ESP32-CAM / ESP32-S3-CAM с питанием от батареи. Почти всё время устройство находится в глубоком сне, периодически просыпается, делает фото и/или короткое видео на SD-карту и снова засыпает. По запросу (кнопка, таймер, команда MQTT) камера поднимается как Wi-Fi сервер со снимком и MJPEG-стримом, а после отключения клиента (или по таймауту простоя) засыпает.
 
 ## Возможности
@@ -83,7 +91,7 @@ pio device monitor                       # монитор порта
 /sdcard/log.txt  (ротация 256 КБ -> log.old)
 ```
 
-При включённой перезапись (`sd_overwrite`) и нехватке места удаляются самые старые папки по датам. Порог записи - 20 МБ свободного места, очистка освобождает ещё 50 МБ запаса, для видео добавляется оценка размера записи. Старые файлы в корне (`IMG_*`, `VID_*`) удаляются первыми.
+При включённой перезаписи (`sd_overwrite`) и нехватке места удаляются самые старые папки по датам. Порог записи - 20 МБ свободного места, очистка освобождает ещё 50 МБ запаса, для видео добавляется оценка размера записи. Старые файлы в корне (`IMG_*`, `VID_*`) удаляются первыми.
 
 ## MQTT
 
@@ -110,4 +118,4 @@ pio device monitor                       # монитор порта
 
 ## Лицензия
 
-MIT, см. [LICENSE](LICENSE). Перед публикацией укажите автора в файле.
+MIT, см. [LICENSE](LICENSE).
