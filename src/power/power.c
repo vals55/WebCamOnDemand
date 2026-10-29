@@ -82,10 +82,89 @@ void power_led(bool on) {
         gpio_config(&io);
         s_led_init = true;
     }
-    gpio_set_level(PIN_LED, on ? 0 : 1);
+    gpio_set_level(PIN_LED, on ? LED_ON_LEVEL : !LED_ON_LEVEL);
 #else
     (void)on;
 #endif
+}
+
+typedef enum { LED_IDLE = 0, LED_BLINK, LED_PULSE } led_mode_t;
+
+static esp_timer_handle_t s_led_tmr;
+static volatile led_mode_t s_led_mode = LED_IDLE;
+static bool s_blink_on;
+static uint32_t s_on_ms, s_off_ms;
+
+static void led_timer_cb(void *arg) {
+    (void)arg;
+    if (s_led_mode == LED_BLINK) {
+        s_blink_on = !s_blink_on;
+        power_led(s_blink_on);
+        esp_timer_start_once(s_led_tmr, (uint64_t)(s_blink_on ? s_on_ms : s_off_ms) * 1000ULL);
+    } else if (s_led_mode == LED_PULSE) {
+        s_led_mode = LED_IDLE;
+        power_led(false);
+    }
+}
+
+static bool led_timer_ready(void) {
+    if (!s_led_tmr) {
+        const esp_timer_create_args_t a = {
+            .callback = led_timer_cb,
+            .name = "led",
+        };
+
+        if (esp_timer_create(&a, &s_led_tmr) != ESP_OK) {
+            s_led_tmr = NULL;
+            return false;
+        }
+    }
+    return true;
+}
+
+static void led_timer_halt(void) {
+    s_led_mode = LED_IDLE;
+    if (s_led_tmr) {
+        esp_timer_stop(s_led_tmr);   /* ошибка, если не запущен, - это нормально */
+    }
+}
+
+void power_led_blink_start(uint32_t on_ms, uint32_t period_ms) {
+    if (!led_timer_ready()) {
+        return;
+    }
+    led_timer_halt();
+    if (on_ms == 0 || period_ms <= on_ms) {
+        power_led(true);
+        return;
+    }
+    s_on_ms = on_ms;
+    s_off_ms = period_ms - on_ms;
+    s_blink_on = true;
+    s_led_mode = LED_BLINK;
+    power_led(true);
+    esp_timer_start_once(s_led_tmr, (uint64_t)s_on_ms * 1000ULL);
+}
+
+void power_led_blink_stop(void) {
+    led_timer_halt();
+    power_led(false);
+}
+
+void power_led_pulse(uint32_t ms) {
+    if (!led_timer_ready()) {
+        return;
+    }
+    led_timer_halt();
+    s_led_mode = LED_PULSE;
+    power_led(true);
+    esp_timer_start_once(s_led_tmr, (uint64_t)ms * 1000ULL);
+}
+
+void power_led_wait_idle(void) {
+    while (s_led_mode == LED_PULSE) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 bool power_button_long_press(uint32_t ms) {
@@ -146,6 +225,7 @@ bool power_pir_wait_low(uint32_t timeout_ms) {
 esp_err_t power_sleep(const app_config_t *cfg, uint32_t sleep_s, bool arm_pir) {
     esp_err_t err;
 
+    led_timer_halt();
 #if HAS_LED
     if (s_led_init) {
         power_led(false);

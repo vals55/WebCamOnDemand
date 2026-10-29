@@ -25,10 +25,11 @@ static esp_err_t index_get(httpd_req_t *req) {
         "<!doctype html><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>WebCam</title><body style='font-family:sans-serif;text-align:center'>"
-        "<h3>WebCam</h3><img id=v style='max-width:100%'><p>"
-        "<button onclick='go()'>Стрим</button> "
+        "<h3>WebCam</h3>"
+        "<p><button onclick='go()'>Стрим</button> "
         "<a href=/capture target=_blank><button>Снимок</button></a> "
         "<a href=/sleep><button>Спать</button></a></p>"
+        "<img id=v style='max-width:100%'>"
         "<script>function go(){v.src=location.protocol+'//'+location.hostname+':81/stream'}</script>";
 
     touch();

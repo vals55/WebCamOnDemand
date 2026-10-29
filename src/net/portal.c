@@ -16,6 +16,7 @@
 #include "wifi_sta.h"
 #include "portal_page.h"
 #include "app_config.h"
+#include "power.h"
 
 static const char *TAG = "portal";
 
@@ -640,6 +641,7 @@ void portal_run(app_config_t *cfg) {
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 
+    power_led(false);
     if (s_saved) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }

@@ -12,8 +12,9 @@
 #define PIN_BTN          GPIO_NUM_0
 #define PIN_PIR          GPIO_NUM_14        /* RTC GPIO 0-21; 13 занят PCLK камеры */
 #define PIR_GPIO_STR     "14"
-#define PIN_LED          GPIO_NUM_NC        /* простого LED нет (WS2812 на IO48) */
-#define HAS_LED          0
+#define PIN_LED          GPIO_NUM_2         /* синий LED на IO2, горит уровнем 1 (WS2812 на IO48 не используется) */
+#define HAS_LED          1
+#define LED_ON_LEVEL     1
 
 #define CAM_PIN_PWDN     (-1)               /* PWDN не выведен */
 #define CAM_PIN_XCLK     15
@@ -44,6 +45,7 @@
 #define PIR_GPIO_STR     "13"
 #define PIN_LED          GPIO_NUM_33        /* красный светодиод на плате, активный 0 */
 #define HAS_LED          1
+#define LED_ON_LEVEL     0
 
 #define CAM_PIN_PWDN     32
 #define CAM_PIN_XCLK     0
@@ -71,3 +73,14 @@
 #define PIR_BACKOFF_MIN  15       /* первая перепроверка залипшего PIR, с */
 #define PIR_BACKOFF_MAX  600      /* потолок перепроверки, с */
 #define BTN_LONG_MS      3000     /* удержание IO0 от момента пробуждения -> портал */
+
+/* Индикация светодиодом */
+#ifndef LED_SRV_ON_MS
+#define LED_SRV_ON_MS      10      /* серверный режим: длительность вспышки */
+#endif
+#ifndef LED_SRV_PERIOD_MS
+#define LED_SRV_PERIOD_MS  1000    /* серверный режим: период вспышек */
+#endif
+#ifndef LED_PIR_MS
+#define LED_PIR_MS         1000    /* срабатывание PIR: LED горит столько мс */
+#endif

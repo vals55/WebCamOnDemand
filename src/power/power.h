@@ -29,6 +29,14 @@ bool power_time_valid(void);
 bool power_button_long_press(uint32_t ms);
 void power_led(bool on);
 
+/* Серверный режим: короткая вспышка LED_SRV_ON_MS раз в LED_SRV_PERIOD_MS (esp_timer, без отдельной задачи) */
+void power_led_blink_start(uint32_t on_ms, uint32_t period_ms);
+void power_led_blink_stop(void);   /* останавливает мигание и гасит LED */
+
+/* Одиночная вспышка: LED горит ms миллисекунд и гаснет сам (PIR) */
+void power_led_pulse(uint32_t ms);
+void power_led_wait_idle(void);    /* дождаться конца вспышки перед сном */
+
 /* Ждать спада PIR не дольше timeout_ms. false = линия так и осталась в 1 */
 bool power_pir_wait_low(uint32_t timeout_ms);
 

@@ -28,7 +28,7 @@ static esp_err_t pub(const app_config_t *c, const char *comp, const char *obj,
     l = snprintf(buf, 1100,
                  "{\"name\":\"%s\",\"unique_id\":\"%s_%s\","
                  "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"WebCam %s\","
-                 "\"manufacturer\":\"DIY\",\"model\":\"ESP32-CAM\"},%s}",
+                 "\"manufacturer\":\"vals\",\"model\":\"ESP32 CAM on demand\"},%s}",
                  name, c->device_id, obj, c->device_id, c->device_id, extra);
     err = mqtt_publish_raw(topic, buf, l, 1, true);
     free(buf);

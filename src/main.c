@@ -171,7 +171,9 @@ static void net_session(app_config_t *c, wake_cause_t wc, const cap_result_t *ca
     if (server) {
         s_next_srv_ms = power_now_ms() + (uint64_t)c->srv_period_s * 1000;
         ESP_LOGI(TAG, "server mode at %s", ip);
+        power_led_blink_start(LED_SRV_ON_MS, LED_SRV_PERIOD_MS);
         server_run(c);
+        power_led_blink_stop();
     }
     if (mq) {
         mqtt_publish_events(c);
@@ -244,6 +246,9 @@ void app_main(void) {
         ESP_LOGE(TAG, "NVS init failed");
     }
     config_load(&cfg);
+    if (pir_fired && cfg.pir_enabled) {
+        power_led_pulse(LED_PIR_MS);
+    }
 
     /* TZ не переживает глубокий сон: без этого localtime() работает по UTC */
     setenv("TZ", cfg.tz, 1);
@@ -315,5 +320,6 @@ void app_main(void) {
     }
     capture_free(&cap);
 
+    power_led_wait_idle();
     go_sleep(&cfg, pir_fired);
 }
