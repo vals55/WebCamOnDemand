@@ -55,19 +55,10 @@ static esp_err_t pub_switch(const app_config_t *c, const char *obj, const char *
     snprintf(x, sizeof(x), "\"command_topic\":\"%s/cmd/%s\",\"state_topic\":\"%s/state\","
              "\"value_template\":\"{{ value_json.%s }}\",\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
              "\"state_on\":\"ON\",\"state_off\":\"OFF\",\"icon\":\"mdi:%s\",\"retain\":true",
+            //  "\"state_on\":\"ON\",\"state_off\":\"OFF\",\"optimistic\":true,\"icon\":\"mdi:%s\",\"retain\":true",
              c->mqtt_prefix, obj, c->mqtt_prefix, obj, icon);
     return pub(c, "switch", obj, name, x);
 }
-
-// static esp_err_t pub_switch(const app_config_t *c, const char *obj, const char *name, const char *icon) {
-//     char x[420];
-//     snprintf(x, sizeof(x), "\"command_topic\":\"%s/cmd/%s\",\"state_topic\":\"%s/state\","
-//              "\"value_template\":\"{{ value_json.%s }}\",\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
-//              "\"state_on\":\"ON\",\"state_off\":\"OFF\",\"optimistic\":true,"
-//              "\"icon\":\"mdi:%s\",\"retain\":true",
-//              c->mqtt_prefix, obj, c->mqtt_prefix, obj, icon);
-//     return pub(c, "switch", obj, name, x);
-// }
 
 void ha_discovery_publish(const app_config_t *c) {
     char x[480];
