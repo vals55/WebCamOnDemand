@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "mqtt_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -26,31 +27,57 @@ static char s_prefix[64];
 static char s_lwt[96];
 static volatile mqtt_cmds_t s_cmds;
 
-static bool topic_is(const esp_mqtt_event_handle_t ev, const char *suffix) {
-    char t[128];
-    int n = snprintf(t, sizeof(t), "%s/cmd/%s", s_prefix, suffix);
+/* ON/1/true -> 1, OFF/0/false -> 2, иначе 0 */
+static uint8_t parse_onoff(const char *v) {
+    if (!strcasecmp(v, "ON") || !strcmp(v, "1") || !strcasecmp(v, "true")) return 1;
+    if (!strcasecmp(v, "OFF") || !strcmp(v, "0") || !strcasecmp(v, "false")) return 2;
+    return 0;
+}
 
-    return ev->topic_len == n && strncmp(ev->topic, t, n) == 0;
+/* 0 -> 1, 90 -> 2, 270 или -90 -> 3, иначе 0 */
+static uint8_t parse_rot(const char *v) {
+    char *end;
+    long n = strtol(v, &end, 10);
+
+    if (end == v) return 0;
+    return n == 0 ? 1 : n == 90 ? 2 : (n == 270 || n == -90) ? 3 : 0;
+}
+
+static const char *rot_str(uint8_t r) {
+    return r == 1 ? "90" : r == 2 ? "270" : "0";
 }
 
 static void on_data(esp_mqtt_event_handle_t ev) {
-    char v[16] = {0};
+    char pre[80], v[16] = {0};
+    int pl = snprintf(pre, sizeof(pre), "%s/cmd/", s_prefix);
+    const char *leaf = ev->topic + pl;
+    int ll = ev->topic_len - pl;
 
-    if (ev->data_len <= 0 || ev->current_data_offset != 0) {
+    if (ev->data_len <= 0 || ev->current_data_offset != 0 ||
+        ev->topic_len <= pl || strncmp(ev->topic, pre, pl) != 0) {
         return;
     }
     memcpy(v, ev->data, ev->data_len < 15 ? ev->data_len : 15);
 
-    if (topic_is(ev, "server_mode")) {
+#define IS(name) (ll == (int)sizeof(name) - 1 && memcmp(leaf, name, ll) == 0)
+    if (IS("server_mode")) {
         s_cmds.server_mode = (v[0] != '0');
-    } else if (topic_is(ev, "snapshot")) {
+    } else if (IS("snapshot")) {
         s_cmds.snapshot = (v[0] != '0');
-    } else if (topic_is(ev, "set_interval")) {
+    } else if (IS("hflip")) {
+        s_cmds.hflip = parse_onoff(v);
+    } else if (IS("vflip")) {
+        s_cmds.vflip = parse_onoff(v);
+    } else if (IS("rotate")) {
+        s_cmds.rotate = parse_rot(v);
+    } else if (IS("set_interval")) {
         uint32_t n = (uint32_t)strtoul(v, NULL, 10);
+
         if (n >= 10 && n <= 7UL * 24 * 3600) {
             s_cmds.interval_s = n;
         }
     }
+#undef IS
 }
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
@@ -211,12 +238,14 @@ esp_err_t mqtt_publish_events(const app_config_t *c) {
 
 esp_err_t mqtt_publish_state(const app_config_t *c, const char *wake, int rssi,
                              const char *ip, int sd_free_mb) {
-    char t[96], j[320];
+    char t[96], j[384];
     int l = snprintf(j, sizeof(j),
                      "{\"wake\":\"%s\",\"boot\":%u,\"rssi\":%d,\"ip\":\"%s\","
-                     "\"sd_free_mb\":%d,\"timer_interval\":%u,\"fw\":\"0.1\"}",
+                     "\"sd_free_mb\":%d,\"timer_interval\":%u,\"hflip\":\"%s\",\"vflip\":\"%s\","
+                     "\"rotate\":\"%s\",\"fw\":\"0.1\"}",
                      wake, (unsigned)power_boot_count(), rssi, ip, sd_free_mb,
-                     (unsigned)c->timer_interval_s);
+                     (unsigned)c->timer_interval_s,
+                     c->hflip ? "ON" : "OFF", c->vflip ? "ON" : "OFF", rot_str(c->rotate));
 
     topic_of(t, sizeof(t), "state");
     return mqtt_publish_raw(t, j, l, 1, true);
@@ -231,24 +260,22 @@ void mqtt_poll_cmds(const app_config_t *c, mqtt_cmds_t *out, uint32_t wait_ms) {
         xEventGroupWaitBits(s_eg, B_SUB, pdFALSE, pdFALSE, pdMS_TO_TICKS(3000));
         vTaskDelay(pdMS_TO_TICKS(wait_ms));
     }
-    out->server_mode = s_cmds.server_mode;
-    out->snapshot = s_cmds.snapshot;
-    out->interval_s = s_cmds.interval_s;
+    *out = s_cmds;
+}
+
+/* Команды приходят как retained: после обработки очищаем */
+static void clear_cmd(const char *leaf) {
+    char t[96];
+
+    snprintf(t, sizeof(t), "%s/cmd/%s", s_prefix, leaf);
+    mqtt_publish_raw(t, "", 0, 1, true);
 }
 
 void mqtt_clear_cmds(const app_config_t *c, const mqtt_cmds_t *cm) {
-    char t[96];
-
-    if (cm->server_mode) {
-        topic_of(t, sizeof(t), "cmd/server_mode");
-        mqtt_publish_raw(t, "", 0, 1, true);
-    }
-    if (cm->snapshot) {
-        topic_of(t, sizeof(t), "cmd/snapshot");
-        mqtt_publish_raw(t, "", 0, 1, true);
-    }
-    if (cm->interval_s) {
-        topic_of(t, sizeof(t), "cmd/set_interval");
-        mqtt_publish_raw(t, "", 0, 1, true);
-    }
+    if (cm->server_mode) clear_cmd("server_mode");
+    if (cm->snapshot) clear_cmd("snapshot");
+    if (cm->hflip) clear_cmd("hflip");
+    if (cm->vflip) clear_cmd("vflip");
+    if (cm->rotate) clear_cmd("rotate");
+    if (cm->interval_s) clear_cmd("set_interval");
 }

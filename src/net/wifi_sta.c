@@ -21,6 +21,7 @@ static const char *TAG = "wifi";
 
 static EventGroupHandle_t s_eg;
 static esp_netif_t *s_sta;
+static esp_netif_t *s_ap;
 static bool s_inited;
 static volatile bool s_sta_enabled;
 static int s_retry;
@@ -47,9 +48,11 @@ esp_err_t net_init(void) {
     if (s_inited) {
         return ESP_OK;
     }
-    s_eg = xEventGroupCreate();
     if (!s_eg) {
-        return ESP_ERR_NO_MEM;
+        s_eg = xEventGroupCreate();
+        if (!s_eg) {
+            return ESP_ERR_NO_MEM;
+        }
     }
     err = esp_netif_init();
     if (err != ESP_OK) {
@@ -59,8 +62,9 @@ esp_err_t net_init(void) {
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         return err;
     }
-    s_sta = esp_netif_create_default_wifi_sta();
-    esp_netif_create_default_wifi_ap();
+    /* повторный вызов после ошибки не должен плодить интерфейсы */
+    if (!s_sta) s_sta = esp_netif_create_default_wifi_sta();
+    if (!s_ap) s_ap = esp_netif_create_default_wifi_ap();
 
     err = esp_wifi_init(&wc);
     if (err != ESP_OK) {

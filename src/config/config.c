@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 #include "config.h"
 #include <string.h>
-#include <stddef.h>
 #include <stdio.h>
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -16,8 +15,6 @@ static const char *TAG = "config";
 void config_defaults(app_config_t *c) {
     uint8_t mac[6] = {0};
     memset(c, 0, sizeof(*c));
-    c->version = CFG_VERSION;
-    c->size = sizeof(*c);
 
     strlcpy(c->ntp_server, "ru.pool.ntp.org", sizeof(c->ntp_server));
     strlcpy(c->tz, "MSK-3", sizeof(c->tz));
@@ -57,48 +54,35 @@ void config_defaults(app_config_t *c) {
     snprintf(c->mqtt_prefix, sizeof(c->mqtt_prefix), "webcam/%s", c->device_id);
 }
 
-/* Конец полей версии 1: всё, что после, добавлено в v2 */
-#define CFG_V1_END offsetof(app_config_t, wifi_bssid)
-/* Конец полей версии 2: sd_overwrite добавлено в v3 */
-#define CFG_V2_END offsetof(app_config_t, sd_overwrite)
-
-static void clamp_u32(uint32_t *v, uint32_t lo, uint32_t hi) {
-    if (*v < lo) *v = lo;
-    if (*v > hi) *v = hi;
-}
+#define CLAMP(f, lo, hi) \
+    do { if ((f) < (lo)) (f) = (lo); else if ((f) > (hi)) (f) = (hi); } while (0)
+#define TERM(f) ((f)[sizeof(f) - 1] = '\0')
 
 static void sanitize(app_config_t *c) {
-    uint32_t t;
+    TERM(c->wifi_ssid);  TERM(c->wifi_pass);  TERM(c->ntp_server); TERM(c->tz);
+    TERM(c->mqtt_host);  TERM(c->mqtt_user);  TERM(c->mqtt_pass);
+    TERM(c->mqtt_prefix); TERM(c->device_id); TERM(c->ha_prefix);
 
-    c->wifi_ssid[sizeof(c->wifi_ssid) - 1] = '\0';
-    c->wifi_pass[sizeof(c->wifi_pass) - 1] = '\0';
-    c->mqtt_host[sizeof(c->mqtt_host) - 1] = '\0';
-    c->mqtt_user[sizeof(c->mqtt_user) - 1] = '\0';
-    c->mqtt_pass[sizeof(c->mqtt_pass) - 1] = '\0';
-    c->mqtt_prefix[sizeof(c->mqtt_prefix) - 1] = '\0';
-    c->device_id[sizeof(c->device_id) - 1] = '\0';
-    c->ha_prefix[sizeof(c->ha_prefix) - 1] = '\0';
-    c->ntp_server[sizeof(c->ntp_server) - 1] = '\0';
-    c->tz[sizeof(c->tz) - 1] = '\0';
-
-    clamp_u32(&c->timer_interval_s, 10, 7UL * 24 * 3600);
-    clamp_u32(&c->srv_period_s, 60, 7UL * 24 * 3600);
-    t = c->jpeg_quality;   clamp_u32(&t, 4, 63);    c->jpeg_quality = t;
-    t = c->stream_quality; clamp_u32(&t, 4, 63);    c->stream_quality = t;
+    CLAMP(c->timer_interval_s, 10, 7UL * 24 * 3600);
+    CLAMP(c->srv_period_s, 60, 7UL * 24 * 3600);
+    CLAMP(c->jpeg_quality, 4, 63);
+    CLAMP(c->stream_quality, 4, 63);
+    CLAMP(c->video_fps, 1, 30);
+    CLAMP(c->video_len_s, 1, 300);
+    CLAMP(c->srv_idle_s, 10, 3600);
+    CLAMP(c->wifi_timeout_s, 5, 60);
+    CLAMP(c->mqtt_timeout_s, 3, 60);
+    CLAMP(c->mqtt_batch_n, 1, 100);
     if (c->framesize >= FRAMESIZE_INVALID) c->framesize = FRAMESIZE_UXGA;
     if (c->stream_framesize > FRAMESIZE_SXGA) c->stream_framesize = FRAMESIZE_XGA;
-    t = c->video_fps;      clamp_u32(&t, 1, 30);    c->video_fps = t;
-    t = c->video_len_s;    clamp_u32(&t, 1, 300);   c->video_len_s = t;
-    t = c->srv_idle_s;     clamp_u32(&t, 10, 3600); c->srv_idle_s = t;
-    t = c->wifi_timeout_s; clamp_u32(&t, 5, 60);    c->wifi_timeout_s = t;
-    t = c->mqtt_timeout_s; clamp_u32(&t, 3, 60);    c->mqtt_timeout_s = t;
-    t = c->mqtt_batch_n;   clamp_u32(&t, 1, 100);   c->mqtt_batch_n = t;
     if (c->timer_action > ACT_BOTH) c->timer_action = ACT_PHOTO;
     if (c->pir_action > ACT_BOTH) c->pir_action = ACT_PHOTO;
     if (c->mqtt_policy > MQTT_SERVER_ONLY) c->mqtt_policy = MQTT_OFF;
     if (c->mqtt_port == 0) c->mqtt_port = c->mqtt_tls ? 8883 : 1883;
+    if (c->rotate > 2) c->rotate = 0;
 }
 
+/* Конфигурация хранится одним blob. Размер не совпал (изменилась структура) -> значения по умолчанию. */
 esp_err_t config_load(app_config_t *cfg) {
     nvs_handle_t h;
     size_t len = sizeof(*cfg);
@@ -107,34 +91,8 @@ esp_err_t config_load(app_config_t *cfg) {
     if (err == ESP_OK) {
         err = nvs_get_blob(h, CFG_NVS_KEY, cfg, &len);
         nvs_close(h);
-        if (err == ESP_OK && cfg->version == 1 && len == cfg->size && len >= CFG_V1_END) {
-            app_config_t old = *cfg;
-
-            config_defaults(cfg);
-            memcpy(cfg, &old, CFG_V1_END);
-            cfg->version = CFG_VERSION;
-            cfg->size = sizeof(*cfg);
-            sanitize(cfg);
-            ESP_LOGW(TAG, "migrated v1 -> v%d", CFG_VERSION);
-            config_save(cfg);
-            return ESP_OK;
-        }
-        if (err == ESP_OK && cfg->version == 2 && len == cfg->size && len >= CFG_V2_END) {
-            app_config_t old = *cfg;
-
-            config_defaults(cfg);
-            memcpy(cfg, &old, CFG_V2_END);
-            cfg->version = CFG_VERSION;
-            cfg->size = sizeof(*cfg);
-            sanitize(cfg);
-            ESP_LOGW(TAG, "migrated v2 -> v%d", CFG_VERSION);
-            config_save(cfg);
-            return ESP_OK;
-        }
-        if (err == ESP_OK &&
-            (len != sizeof(*cfg) || cfg->version != CFG_VERSION ||
-             cfg->size != sizeof(*cfg))) {
-            err = ESP_ERR_INVALID_VERSION;
+        if (err == ESP_OK && len != sizeof(*cfg)) {
+            err = ESP_ERR_INVALID_SIZE;
         }
     }
     if (err != ESP_OK) {
@@ -149,17 +107,13 @@ esp_err_t config_load(app_config_t *cfg) {
 esp_err_t config_save(const app_config_t *cfg) {
     app_config_t tmp = *cfg;
     nvs_handle_t h;
-    esp_err_t err;
+    esp_err_t err = nvs_open(CFG_NVS_NS, NVS_READWRITE, &h);
 
-    tmp.version = CFG_VERSION;
-    tmp.size = sizeof(tmp);
-    sanitize(&tmp);
-
-    err = nvs_open(CFG_NVS_NS, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "nvs_open: %s", esp_err_to_name(err));
         return err;
     }
+    sanitize(&tmp);
     err = nvs_set_blob(h, CFG_NVS_KEY, &tmp, sizeof(tmp));
     if (err == ESP_OK) {
         err = nvs_commit(h);

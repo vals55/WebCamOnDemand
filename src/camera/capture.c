@@ -13,6 +13,7 @@
 #include "sd.h"
 #include "power.h"
 #include "avi.h"
+#include "rotate.h"
 
 static const char *TAG = "capture";
 
@@ -33,23 +34,30 @@ static int video_need_mb(const app_config_t *c)
     return mb > 2000 ? 2000 : (int)mb;
 }
 
-static esp_err_t do_photo(bool keep, bool sd_ok, cap_result_t *r)
+static esp_err_t do_photo(const app_config_t *c, bool keep, bool sd_ok, cap_result_t *r)
 {
     char path[96];
     camera_fb_t *fb = app_cam_photo_begin();
     esp_err_t err = ESP_OK;
+    size_t len = 0;
+    uint8_t *rot;
+    const uint8_t *buf;
+
     if (!fb) return ESP_FAIL;
+    rot = app_rot_try(fb, c->rotate, c->jpeg_quality, ROT_PHOTO_MAX, &len);
+    buf = rot ? rot : fb->buf;
+    if (!rot) len = fb->len;
     if (keep) {
-        r->jpeg = heap_caps_malloc(fb->len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (!r->jpeg) r->jpeg = malloc(fb->len);
+        r->jpeg = heap_caps_malloc(len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!r->jpeg) r->jpeg = malloc(len);
         if (r->jpeg) {
-            memcpy(r->jpeg, fb->buf, fb->len);
-            r->jpeg_len = fb->len;
+            memcpy(r->jpeg, buf, len);
+            r->jpeg_len = len;
         }
     }
     if (sd_ok) {
         sd_make_name(path, sizeof(path), "IMG", "jpg");
-        err = sd_save(path, fb->buf, fb->len);
+        err = sd_save(path, buf, len);
         if (err == ESP_OK) {
             set_file(r, path);
             sd_log("photo %s", r->file);
@@ -59,6 +67,7 @@ static esp_err_t do_photo(bool keep, bool sd_ok, cap_result_t *r)
     } else if (!r->jpeg) {
         err = ESP_ERR_NOT_FOUND;
     }
+    free(rot);
     app_cam_photo_end(fb);
     return err;
 }
@@ -78,8 +87,13 @@ static esp_err_t do_video(const app_config_t *c, cap_result_t *r)
     fb = app_cam_capture();
     if (!fb) return ESP_FAIL;
     sd_make_name(path, sizeof(path), "VID", "avi");
-    w = fb->width;
-    h = fb->height;
+    {
+        uint16_t ow, oh;
+
+        app_rot_dims(fb->width, fb->height, c->rotate, ROT_VIDEO_MAX, &ow, &oh);
+        w = ow;
+        h = oh;
+    }
     a = avi_open(path, w, h, max_frames);
     app_cam_release(fb);
     if (!a) return ESP_ERR_NO_MEM;
@@ -92,9 +106,23 @@ static esp_err_t do_video(const app_config_t *c, cap_result_t *r)
             err = ESP_FAIL;
             break;
         }
-        err = avi_add_frame(a, fb->buf, fb->len);
-        bytes += fb->len;
-        app_cam_release(fb);
+        if (c->rotate) {
+            size_t rl = 0;
+            uint8_t *ro = app_rot_try(fb, c->rotate, c->jpeg_quality, ROT_VIDEO_MAX, &rl);
+
+            app_cam_release(fb);
+            if (!ro) {              /* кадр другого размера в AVI не положить */
+                err = ESP_FAIL;
+                break;
+            }
+            err = avi_add_frame(a, ro, rl);
+            bytes += rl;
+            free(ro);
+        } else {
+            err = avi_add_frame(a, fb->buf, fb->len);
+            bytes += fb->len;
+            app_cam_release(fb);
+        }
         if (err == ESP_ERR_INVALID_SIZE) {
             err = ESP_OK;
             break;
@@ -161,7 +189,7 @@ esp_err_t capture_run(const app_config_t *c, cap_action_t act, bool keep_jpeg, c
         goto out;
     }
     if (act == ACT_PHOTO || act == ACT_BOTH) {
-        e = do_photo(keep_jpeg, writable, r);
+        e = do_photo(c, keep_jpeg, writable, r);
         if (e != ESP_OK) err = e;
     }
     if (want_video && writable) {

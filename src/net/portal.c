@@ -50,6 +50,8 @@ static const opt_t O_SFS[] = {{FRAMESIZE_QVGA, "320x240"}, {FRAMESIZE_VGA, "640x
                               {FRAMESIZE_SVGA, "800x600"}, {FRAMESIZE_XGA, "1024x768"},
                               {FRAMESIZE_HD, "1280x720"}, {-1, NULL}};
 
+static const opt_t O_ROT[] = {{0, "Нет"}, {1, "90° по часовой"}, {2, "90° против часовой"}, {-1, NULL}};
+
 #define SZ(m) sizeof(((app_config_t *)0)->m)
 #define HDR(l)              {"", l, T_HDR, 0, 0, NULL, NULL, NULL}
 #define FS(m, l, a, h)      {#m, l, T_STR, offsetof(app_config_t, m), SZ(m), NULL, a, h}
@@ -96,6 +98,10 @@ static const field_t FIELDS[] = {
     F8(stream_quality, "Качество JPEG стрима", NULL, "min='4' max='63'", "Рекомендуется 12–20"),
     F16(video_len_s, "Длина видео, с", "min='1' max='300'", "1–300"),
     F8(video_fps, "FPS видео", NULL, "min='1' max='30'", "1–30, реальный FPS зависит от разрешения"),
+    FB(hflip, "Зеркало по горизонтали (фото, видео, стрим)", NULL),
+    FB(vflip, "Переворот по вертикали (фото, видео, стрим)", "Оба пункта вместе = поворот на 180°"),
+    F8(rotate, "Поворот на 90°", O_ROT, NULL,
+       "Программный: нужна PSRAM, кадр уменьшается (фото 1600x1200 -> 800x600), FPS видео и стрима падает"),
     FB(sd_overwrite, "Циклическая перезапись SD (удалять самые старые файлы при нехватке места)", NULL),
 
     HDR("Серверный режим"),

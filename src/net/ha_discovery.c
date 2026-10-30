@@ -8,16 +8,29 @@
 #include "app_mqtt.h"
 
 static const char *TAG = "ha";
-static RTC_DATA_ATTR bool s_done;
+#define HA_BUF 1100
+
+/* Discovery публикуется заново после каждой перепрошивки (id зависит от времени сборки) */
+static const char BUILD[] = __DATE__ " " __TIME__;
+static RTC_DATA_ATTR uint32_t s_done_id;
+
+static uint32_t build_id(void) {
+    uint32_t h = 5381;
+
+    for (const char *p = BUILD; *p; p++) {
+        h = h * 33 + (uint8_t)*p;
+    }
+    return h ? h : 1;
+}
 
 void ha_discovery_invalidate(void) {
-    s_done = false;
+    s_done_id = 0;
 }
 
 static esp_err_t pub(const app_config_t *c, const char *comp, const char *obj,
                      const char *name, const char *extra) {
     char topic[160];
-    char *buf = malloc(1100);
+    char *buf = malloc(HA_BUF);
     esp_err_t err;
     int l;
 
@@ -25,14 +38,25 @@ static esp_err_t pub(const app_config_t *c, const char *comp, const char *obj,
         return ESP_ERR_NO_MEM;
     }
     snprintf(topic, sizeof(topic), "%s/%s/%s/%s/config", c->ha_prefix, comp, c->device_id, obj);
-    l = snprintf(buf, 1100,
+    l = snprintf(buf, HA_BUF,
                  "{\"name\":\"%s\",\"unique_id\":\"%s_%s\","
                  "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"WebCam %s\","
-                 "\"manufacturer\":\"vals\",\"model\":\"ESP32 CAM on demand\"},%s}",
+                 "\"manufacturer\":\"by Vals\",\"model\":\"ESP32 CAM on demand\"},%s}",
                  name, c->device_id, obj, c->device_id, c->device_id, extra);
-    err = mqtt_publish_raw(topic, buf, l, 1, true);
+    err = (l > 0 && l < HA_BUF) ? mqtt_publish_raw(topic, buf, l, 1, true) : ESP_ERR_INVALID_SIZE;
     free(buf);
     return err;
+}
+
+static esp_err_t pub_switch(const app_config_t *c, const char *obj, const char *name, const char *icon) {
+    char x[420];
+
+    snprintf(x, sizeof(x), "\"command_topic\":\"%s/cmd/%s\",\"state_topic\":\"%s/state\","
+             "\"value_template\":\"{{ value_json.%s }}\",\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
+             "\"state_on\":\"ON\",\"state_off\":\"OFF\",\"optimistic\":true,"
+             "\"icon\":\"mdi:%s\",\"retain\":true",
+             c->mqtt_prefix, obj, c->mqtt_prefix, obj, icon);
+    return pub(c, "switch", obj, name, x);
 }
 
 void ha_discovery_publish(const app_config_t *c) {
@@ -40,7 +64,7 @@ void ha_discovery_publish(const app_config_t *c) {
     const char *p = c->mqtt_prefix;
     esp_err_t err = ESP_OK;
 
-    if (s_done) {
+    if (s_done_id == build_id()) {
         return;
     }
 
@@ -79,11 +103,19 @@ void ha_discovery_publish(const app_config_t *c) {
 
     snprintf(x, sizeof(x), "\"command_topic\":\"%s/cmd/set_interval\",\"state_topic\":\"%s/state\","
              "\"value_template\":\"{{ value_json.timer_interval }}\",\"min\":10,\"max\":86400,"
-             "\"step\":10,\"unit_of_measurement\":\"s\",\"mode\":\"box\",\"retain\":true", p, p);
+             "\"step\":10,\"unit_of_measurement\":\"s\",\"mode\":\"box\",\"optimistic\":true,\"retain\":true", p, p);
     err |= pub(c, "number", "interval", "Timer interval", x);
 
+    err |= pub_switch(c, "hflip", "Flip horizontal", "flip-horizontal");
+    err |= pub_switch(c, "vflip", "Flip vertical", "flip-vertical");
+
+    snprintf(x, sizeof(x), "\"command_topic\":\"%s/cmd/rotate\",\"state_topic\":\"%s/state\","
+             "\"value_template\":\"{{ value_json.rotate }}\",\"options\":[\"0\",\"90\",\"270\"],"
+             "\"optimistic\":true,\"icon\":\"mdi:rotate-right\",\"retain\":true", p, p);
+    err |= pub(c, "select", "rotate", "Rotate", x);
+
     if (err == ESP_OK) {
-        s_done = true;
+        s_done_id = build_id();
     } else {
         ESP_LOGW(TAG, "discovery incomplete");
     }

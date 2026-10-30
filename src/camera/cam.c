@@ -12,6 +12,7 @@
 #include "esp_psram.h"
 #include "sensor.h"
 #include "app_config.h"
+#include "rotate.h"
 
 static const char *TAG = "cam";
 
@@ -28,6 +29,7 @@ static framesize_t s_photo_fs;
 static framesize_t s_stream_fs;
 static uint8_t s_photo_q;
 static uint8_t s_stream_q;
+static bool s_hflip, s_vflip;
 static SemaphoreHandle_t s_lock;
 static char s_name[16] = "none";
 
@@ -37,6 +39,23 @@ static size_t fb_bytes(framesize_t fs) {
     if (n < FB_MIN) n = FB_MIN;
     if (n > FB_MAX) n = FB_MAX;
     return (n + 4095) & ~(size_t)4095;
+}
+
+static void apply_flip(sensor_t *s) {
+    if (s) {
+        s->set_hmirror(s, s_hflip);
+        s->set_vflip(s, s_vflip);
+    }
+}
+
+void app_cam_set_flip(bool hflip, bool vflip) {
+    s_hflip = hflip;
+    s_vflip = vflip;
+    if (s_ready) {
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        apply_flip(esp_camera_sensor_get());
+        xSemaphoreGive(s_lock);
+    }
 }
 
 static void drop_frames(int n) {
@@ -56,6 +75,7 @@ static void set_mode(bool photo) {
     }
     s->set_framesize(s, photo ? s_photo_fs : s_stream_fs);
     s->set_quality(s, photo ? s_photo_q : s_stream_q);
+    apply_flip(s);                  /* смена разрешения может сбросить зеркало */
     s_photo_mode = photo;
     drop_frames(DROP_SWITCH);
 }
@@ -90,6 +110,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
         if (!s_lock) {
             return ESP_ERR_NO_MEM;
         }
+        app_rot_init();
     }
     if (pfs >= FRAMESIZE_INVALID) pfs = FRAMESIZE_UXGA;
     if (sfs >= FRAMESIZE_INVALID) sfs = FRAMESIZE_XGA;
@@ -134,6 +155,9 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
     } else if (s) {
         snprintf(s_name, sizeof(s_name), "PID 0x%04X", s->id.PID);
     }
+    s_hflip = c->hflip;
+    s_vflip = c->vflip;
+    apply_flip(s);
     s_photo_fs = pfs;
     s_stream_fs = sfs;
 
@@ -147,6 +171,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
 }
 
 void app_cam_deinit(void) {
+    app_rot_release();
     if (s_ready) {
         esp_camera_deinit();
         s_ready = false;

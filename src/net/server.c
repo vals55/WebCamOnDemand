@@ -3,6 +3,7 @@
 #include "server.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "esp_http_server.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
@@ -11,12 +12,14 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "cam.h"
+#include "rotate.h"
 
 static const char *TAG = "server";
 
 static volatile int s_streams;
 static volatile TickType_t s_last;
 static volatile bool s_quit;
+static const app_config_t *s_cfg;
 
 static void touch(void) { s_last = xTaskGetTickCount(); }
 
@@ -48,7 +51,14 @@ static esp_err_t capture_get(httpd_req_t *req) {
     }
     httpd_resp_set_type(req, "image/jpeg");
     httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
-    err = httpd_resp_send(req, (const char *)fb->buf, fb->len);
+    {
+        size_t len = 0;
+        uint8_t *ro = app_rot_try(fb, s_cfg->rotate, s_cfg->jpeg_quality, ROT_PHOTO_MAX, &len);
+
+        err = ro ? httpd_resp_send(req, (const char *)ro, len)
+                 : httpd_resp_send(req, (const char *)fb->buf, fb->len);
+        free(ro);
+    }
     app_cam_photo_end(fb);
     touch();
     return err;
@@ -97,16 +107,22 @@ static esp_err_t stream_get(httpd_req_t *req) {
             continue;
         }
         miss = 0;
+        size_t sl = 0;
+        uint8_t *ro = app_rot_try(fb, s_cfg->rotate, s_cfg->stream_quality, ROT_VIDEO_MAX, &sl);
+        const uint8_t *sb = ro ? ro : fb->buf;
+
+        if (!ro) sl = fb->len;
         w = fb->width;
         h = fb->height;
         hl = snprintf(hdr, sizeof(hdr),
                       "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
-                      (unsigned)fb->len);
+                      (unsigned)sl);
         err = httpd_resp_send_chunk(req, hdr, hl);
-        if (err == ESP_OK) err = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+        if (err == ESP_OK) err = httpd_resp_send_chunk(req, (const char *)sb, sl);
         if (err == ESP_OK) err = httpd_resp_send_chunk(req, "\r\n", 2);
-        kb += fb->len / 1024;
+        kb += sl / 1024;
         app_cam_release(fb);
+        free(ro);
         if (err != ESP_OK) {
             break;
         }
@@ -150,6 +166,7 @@ void server_run(const app_config_t *cfg) {
     const httpd_uri_t u_str = {.uri = "/stream", .method = HTTP_GET, .handler = stream_get};
     TickType_t idle = pdMS_TO_TICKS((uint32_t)cfg->srv_idle_s * 1000);
 
+    s_cfg = cfg;
     if (app_cam_init(cfg, true) != ESP_OK) {
         ESP_LOGE(TAG, "camera init failed");
         return;

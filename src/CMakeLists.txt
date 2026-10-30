@@ -5,6 +5,7 @@ idf_component_register(
         "power/power.c"
         "camera/cam.c"
         "camera/capture.c"
+        "camera/rotate.c"
         "storage/sd.c"
         "storage/avi.c"
         "log/event_log.c"
@@ -16,5 +17,5 @@ idf_component_register(
     INCLUDE_DIRS "." "config" "power" "camera" "storage" "log" "net"
     REQUIRES nvs_flash driver esp_hw_support esp_rom esp_timer esp_psram
              esp_wifi esp_netif esp_event esp_http_server lwip mqtt esp-tls
-             fatfs sdmmc vfs mdns esp32-camera
+             fatfs sdmmc vfs mdns esp32-camera esp_jpeg
 )

@@ -9,9 +9,6 @@ typedef enum { ACT_NONE = 0, ACT_PHOTO, ACT_VIDEO, ACT_BOTH } cap_action_t;
 typedef enum { MQTT_OFF = 0, MQTT_EACH, MQTT_BATCH, MQTT_SERVER_ONLY } mqtt_policy_t;
 
 typedef struct {
-    uint16_t version;
-    uint16_t size;
-
     char wifi_ssid[33];
     char wifi_pass[65];
     char ntp_server[48];
@@ -50,14 +47,17 @@ typedef struct {
     uint8_t mqtt_batch_n;
     uint8_t mqtt_timeout_s;
 
-    /* v2: поля добавляются только в конец (миграция из v1 в config.c) */
     uint8_t wifi_bssid[6];
     bool wifi_bssid_set;          /* false = любой роутер с этим SSID */
     uint8_t stream_framesize;
     uint8_t stream_quality;
 
-    /* v3 */
     bool sd_overwrite;            /* true = циклическая перезапись SD */
+
+    /* Изображение */
+    bool hflip;                   /* зеркало по горизонтали (на сенсоре) */
+    bool vflip;                   /* переворот по вертикали (на сенсоре) */
+    uint8_t rotate;               /* программный поворот: 0 нет, 1 = 90° по часовой, 2 = 90° против */
 } app_config_t;
 
 void config_defaults(app_config_t *cfg);

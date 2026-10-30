@@ -67,7 +67,6 @@
 
 #define CFG_NVS_NS       "cfg"
 #define CFG_NVS_KEY      "blob"
-#define CFG_VERSION      3
 
 #define PIR_LOW_WAIT_MS  3000     /* сколько ждать спада PIR перед сном */
 #define PIR_BACKOFF_MIN  15       /* первая перепроверка залипшего PIR, с */

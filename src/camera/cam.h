@@ -17,4 +17,7 @@ void app_cam_release(camera_fb_t *fb);
 camera_fb_t *app_cam_photo_begin(void);
 void app_cam_photo_end(camera_fb_t *fb);
 
+/* Зеркало/переворот на сенсоре: фото, видео, стрим. Можно вызывать и до app_cam_init. */
+void app_cam_set_flip(bool hflip, bool vflip);
+
 const char *app_cam_sensor_name(void);

@@ -11,6 +11,9 @@ typedef struct {
     bool server_mode;
     bool snapshot;
     uint32_t interval_s;
+    uint8_t hflip;      /* 0 = нет команды, 1 = ON, 2 = OFF */
+    uint8_t vflip;      /* 0 = нет команды, 1 = ON, 2 = OFF */
+    uint8_t rotate;     /* 0 = нет команды, 1 = 0°, 2 = 90°, 3 = 270° */
 } mqtt_cmds_t;
 
 esp_err_t mqtt_open(const app_config_t *c);

@@ -11,6 +11,7 @@
 #include "config.h"
 #include "power.h"
 #include "capture.h"
+#include "cam.h"
 #include "event_log.h"
 #include "wifi_sta.h"
 #include "portal.h"
@@ -118,6 +119,13 @@ static void handle_cmds(app_config_t *c, wake_cause_t wc, const mqtt_cmds_t *cm,
         config_save(c);
         s_next_timer_ms = power_now_ms() + (uint64_t)c->timer_interval_s * 1000;
     }
+    if (cm->hflip || cm->vflip || cm->rotate) {
+        if (cm->hflip) c->hflip = (cm->hflip == 1);
+        if (cm->vflip) c->vflip = (cm->vflip == 1);
+        if (cm->rotate) c->rotate = cm->rotate - 1;
+        config_save(c);
+        app_cam_set_flip(c->hflip, c->vflip);
+    }
     if (cm->snapshot) {
         cap_result_t r;
         esp_err_t e = capture_run(c, ACT_PHOTO, true, &r);
@@ -161,11 +169,12 @@ static void net_session(app_config_t *c, wake_cause_t wc, const cap_result_t *ca
             mqtt_publish_motion(c);
         }
         mqtt_publish_events(c);
-        mqtt_publish_state(c, ev_cause_str(wc), rssi, ip, cap ? cap->sd_free_mb : -1);
 
+        /* Сначала команды, потом состояние: в HA сразу попадают новые значения */
         mqtt_poll_cmds(c, &cm, 1500);
         mqtt_clear_cmds(c, &cm);
         handle_cmds(c, wc, &cm, &server);
+        mqtt_publish_state(c, ev_cause_str(wc), rssi, ip, cap ? cap->sd_free_mb : -1);
     }
 
     if (server) {
