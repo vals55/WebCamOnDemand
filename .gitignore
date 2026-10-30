@@ -30,4 +30,5 @@ Thumbs.db
 *.bat
 *.txt
 *.zip
-
+*.?*_debug*
+*.?*_release*

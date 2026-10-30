@@ -12,7 +12,15 @@
 #include "esp_psram.h"
 #include "sensor.h"
 #include "app_config.h"
+#include "cam_tune.h"
 #include "rotate.h"
+
+#if CAM_OV5640_AF_ENABLE && defined(__has_include)
+#if __has_include("esp_camera_af.h")
+#include "esp_camera_af.h"
+#define HAVE_AF 1
+#endif
+#endif
 
 static const char *TAG = "cam";
 
@@ -41,10 +49,45 @@ static size_t fb_bytes(framesize_t fs) {
     return (n + 4095) & ~(size_t)4095;
 }
 
+typedef struct {
+    int8_t brightness, contrast, saturation, sharpness;
+    uint8_t denoise;
+    bool lenc;
+    uint8_t warmup_photo, warmup_stream;
+} cam_tune_t;
+
+static const cam_tune_t T_OV3660 = {
+    CAM_OV3660_BRIGHTNESS, CAM_OV3660_CONTRAST, CAM_OV3660_SATURATION, CAM_OV3660_SHARPNESS,
+    CAM_OV3660_DENOISE, CAM_OV3660_LENC, CAM_OV3660_WARMUP_PHOTO, CAM_OV3660_WARMUP_STREAM,
+};
+static const cam_tune_t T_OV5640 = {
+    CAM_OV5640_BRIGHTNESS, CAM_OV5640_CONTRAST, CAM_OV5640_SATURATION, CAM_OV5640_SHARPNESS,
+    CAM_OV5640_DENOISE, CAM_OV5640_LENC, CAM_OV5640_WARMUP_PHOTO, CAM_OV5640_WARMUP_STREAM,
+};
+
+static const cam_tune_t *tune_for(const sensor_t *s) {
+    if (s->id.PID == OV3660_PID) return &T_OV3660;
+    if (s->id.PID == OV5640_PID) return &T_OV5640;
+    return NULL;
+}
+
+/* Вызвать функцию драйвера, если она есть у сенсора; отказ (значение вне диапазона) - в лог */
+#define SET(fn, v) \
+    do { if (s->fn && s->fn(s, (v)) != 0) ESP_LOGW(TAG, #fn "(%d) rejected", (int)(v)); } while (0)
+
+static void apply_tuning(sensor_t *s, const cam_tune_t *t) {
+    SET(set_brightness, t->brightness);
+    SET(set_contrast, t->contrast);
+    SET(set_saturation, t->saturation);
+    SET(set_sharpness, t->sharpness);
+    SET(set_denoise, t->denoise);
+    SET(set_lenc, t->lenc);
+}
+
 static void apply_flip(sensor_t *s) {
     if (s) {
-        s->set_hmirror(s, s_hflip);
-        s->set_vflip(s, s_vflip);
+        SET(set_hmirror, s_hflip);
+        SET(set_vflip, s_vflip);
     }
 }
 
@@ -91,7 +134,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
         .pin_d7 = CAM_PIN_D7, .pin_d6 = CAM_PIN_D6, .pin_d5 = CAM_PIN_D5, .pin_d4 = CAM_PIN_D4,
         .pin_d3 = CAM_PIN_D3, .pin_d2 = CAM_PIN_D2, .pin_d1 = CAM_PIN_D1, .pin_d0 = CAM_PIN_D0,
         .pin_vsync = CAM_PIN_VSYNC, .pin_href = CAM_PIN_HREF, .pin_pclk = CAM_PIN_PCLK,
-        .xclk_freq_hz = 20000000,
+        .xclk_freq_hz = 10000000,
         .ledc_timer = LEDC_TIMER_0, .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
         .fb_count = psram ? 2 : 1,
@@ -99,6 +142,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
         .grab_mode = stream ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY,
     };
     sensor_t *s;
+    const cam_tune_t *tune = NULL;
     camera_sensor_info_t *info;
     esp_err_t err;
 
@@ -141,6 +185,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
     s_stream_q = c->stream_quality;
 
     s = esp_camera_sensor_get();
+    tune = s ? tune_for(s) : NULL;
     info = s ? esp_camera_sensor_get_info(&s->id) : NULL;
     if (info) {
         strlcpy(s_name, info->name, sizeof(s_name));
@@ -158,6 +203,9 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
     s_hflip = c->hflip;
     s_vflip = c->vflip;
     apply_flip(s);
+    if (s && tune) {
+        apply_tuning(s, tune);
+    }
     s_photo_fs = pfs;
     s_stream_fs = sfs;
 
@@ -166,7 +214,29 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
              resolution[sfs].width, resolution[sfs].height, s_stream_q,
              (unsigned)k.fb_count, (unsigned)(k.jpeg_buffer_size / 1024));
 
-    drop_frames(stream ? 2 : 4);
+#ifdef HAVE_AF
+    /* Прошивка автофокуса грузится до прогрева, сведение фокуса - после: сцена уже стабильна */
+    bool af = (s && s->id.PID == OV5640_PID);
+    if (af) {
+        esp_camera_af_config_t afc = {.mode = ESP_CAMERA_AF_MODE_AUTO, .timeout_ms = CAM_OV5640_AF_TIMEOUT_MS};
+
+        af = (esp_camera_af_init(s, &afc) == ESP_OK);
+        if (!af) ESP_LOGW(TAG, "autofocus unavailable (нет AF-объектива или выключен в menuconfig)");
+    }
+#endif
+
+    drop_frames(tune ? (stream ? tune->warmup_stream : tune->warmup_photo)
+                     : (stream ? CAM_OTHER_WARMUP_STREAM : CAM_OTHER_WARMUP_PHOTO));
+
+#ifdef HAVE_AF
+    if (af) {
+        esp_camera_af_status_t st;
+
+        if (esp_camera_af_trigger(s) == ESP_OK) {
+            esp_camera_af_wait(s, 0, &st);      /* 0 = таймаут из esp_camera_af_config_t */
+        }
+    }
+#endif
     return ESP_OK;
 }
 
