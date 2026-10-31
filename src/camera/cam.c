@@ -5,6 +5,7 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 #include "driver/ledc.h"
@@ -84,6 +85,29 @@ static void apply_tuning(sensor_t *s, const cam_tune_t *t) {
     SET(set_lenc, t->lenc);
 }
 
+/* Программный standby (регистр 0x3008, бит 6). OV3660/OV5640 без него держат десятки мА
+   даже без XCLK и в глубоком сне (OV5640 около 100 мА), а на платах без PWDN (S3) питание
+   камеры отключить нечем. OV2640 не трогаем: у него этот регистр другой. */
+#define SCCB_SYSCTRL 0x3008
+#define SYSCTRL_SUSPEND 0x40
+
+static bool has_standby(const sensor_t *s) {
+    return s && (s->id.PID == OV3660_PID || s->id.PID == OV5640_PID);
+}
+
+static void cam_standby(sensor_t *s) {
+    if (has_standby(s)) {
+        s->set_reg(s, SCCB_SYSCTRL, SYSCTRL_SUSPEND, SYSCTRL_SUSPEND);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+static void cam_wake(sensor_t *s) {
+    if (has_standby(s)) {
+        s->set_reg(s, SCCB_SYSCTRL, SYSCTRL_SUSPEND, 0);
+    }
+}
+
 static void apply_flip(sensor_t *s) {
     if (s) {
         SET(set_hmirror, s_hflip);
@@ -134,7 +158,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
         .pin_d7 = CAM_PIN_D7, .pin_d6 = CAM_PIN_D6, .pin_d5 = CAM_PIN_D5, .pin_d4 = CAM_PIN_D4,
         .pin_d3 = CAM_PIN_D3, .pin_d2 = CAM_PIN_D2, .pin_d1 = CAM_PIN_D1, .pin_d0 = CAM_PIN_D0,
         .pin_vsync = CAM_PIN_VSYNC, .pin_href = CAM_PIN_HREF, .pin_pclk = CAM_PIN_PCLK,
-        .xclk_freq_hz = 10000000,
+        .xclk_freq_hz = 20000000,
         .ledc_timer = LEDC_TIMER_0, .ledc_channel = LEDC_CHANNEL_0,
         .pixel_format = PIXFORMAT_JPEG,
         .fb_count = psram ? 2 : 1,
@@ -200,6 +224,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
     } else if (s) {
         snprintf(s_name, sizeof(s_name), "PID 0x%04X", s->id.PID);
     }
+    cam_wake(s);                    /* на случай, если прошлый сеанс закончился standby */
     s_hflip = c->hflip;
     s_vflip = c->vflip;
     apply_flip(s);
@@ -243,6 +268,7 @@ esp_err_t app_cam_init(const app_config_t *c, bool stream) {
 void app_cam_deinit(void) {
     app_rot_release();
     if (s_ready) {
+        cam_standby(esp_camera_sensor_get());   /* последняя операция по SCCB, пока идёт XCLK */
         esp_camera_deinit();
         s_ready = false;
     }

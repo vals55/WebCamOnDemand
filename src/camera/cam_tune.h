@@ -23,14 +23,14 @@
 #define CAM_OV5640_SATURATION   1   /* [-4..4]  +1 */
 #define CAM_OV5640_SHARPNESS    2   /* [-3..3]  +2 */
 #define CAM_OV5640_DENOISE      0   /* [0..8]   2 */
-#define CAM_OV5640_LENC         0   /* 0/1      1 */
-#define CAM_OV5640_WARMUP_PHOTO 20  /* [0..30]  10: у OV5640 автоэкспозиция сходится дольше */
+#define CAM_OV5640_LENC         1   /* 0/1      1 */
+#define CAM_OV5640_WARMUP_PHOTO 5   /* [0..30]  10: у OV5640 автоэкспозиция сходится дольше */
 #define CAM_OV5640_WARMUP_STREAM 3  /* [0..30]  3 */
 
 /* Автофокус OV5640 (только модули с AF-объективом; подробности в README esp32-camera).
    Нужно включить в menuconfig: Component config -> Camera configuration -> Enable autofocus (OV5640).
    Без этого, на сенсоре без AF и на OV3660 код автофокуса просто ничего не делает. */
-#define CAM_OV5640_AF_ENABLE    1   /* 0/1      1: захватить фокус после прогрева, перед первым кадром */
+#define CAM_OV5640_AF_ENABLE    0     /* 0/1      1: захватить фокус после прогрева, перед первым кадром */
 #define CAM_OV5640_AF_TIMEOUT_MS 3000 /* [500..8000] 3000: сколько ждать сведения фокуса */
 
 /* Если сенсор другой (OV2640 и т.д.): настройки не применяются, прогрев 4 кадра для фото и 2 для стрима */
