@@ -268,6 +268,10 @@ void app_main(void) {
     }
 
     event_log_init(wc == WAKE_FIRST_BOOT);
+    if (power_reset_abnormal()) {
+        /* panic / watchdog / brownout: попадёт в last_event и в датчик Reset reason */
+        event_log_add(wc, ACT_NONE, ESP_FAIL, power_reset_reason());
+    }
     now = power_now_ms();
     if (wc == WAKE_FIRST_BOOT || !s_sched_ok) {
         sched_reset(&cfg, now);

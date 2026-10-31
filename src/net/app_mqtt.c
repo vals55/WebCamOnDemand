@@ -238,14 +238,15 @@ esp_err_t mqtt_publish_events(const app_config_t *c) {
 
 esp_err_t mqtt_publish_state(const app_config_t *c, const char *wake, int rssi,
                              const char *ip, int sd_free_mb) {
-    char t[96], j[384];
+    char t[96], j[400];
     int l = snprintf(j, sizeof(j),
                      "{\"wake\":\"%s\",\"boot\":%u,\"rssi\":%d,\"ip\":\"%s\","
                      "\"sd_free_mb\":%d,\"timer_interval\":%u,\"hflip\":\"%s\",\"vflip\":\"%s\","
-                     "\"rotate\":\"%s\",\"fw\":\"0.1\"}",
+                     "\"rotate\":\"%s\",\"reset\":\"%s\",\"fw\":\"0.1\"}",
                      wake, (unsigned)power_boot_count(), rssi, ip, sd_free_mb,
                      (unsigned)c->timer_interval_s,
-                     c->hflip ? "ON" : "OFF", c->vflip ? "ON" : "OFF", rot_str(c->rotate));
+                     c->hflip ? "ON" : "OFF", c->vflip ? "ON" : "OFF", rot_str(c->rotate),
+                     power_reset_reason());
 
     topic_of(t, sizeof(t), "state");
     return mqtt_publish_raw(t, j, l, 1, true);

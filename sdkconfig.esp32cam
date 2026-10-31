@@ -1,3 +1,8 @@
 CONFIG_SPIRAM_MODE_QUAD=y
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Одно ядро: убирает останов второго ядра при deep sleep (зависания int_wdt на входе в сон)
+CONFIG_FREERTOS_UNICORE=y
+# Задача камеры на ядре 0 (значение по умолчанию; при одном ядре единственно возможное)
+CONFIG_CAMERA_CORE0=y

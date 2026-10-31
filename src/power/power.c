@@ -6,6 +6,7 @@
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "esp_private/esp_clk.h"
@@ -15,6 +16,8 @@
 static const char *TAG = "power";
 
 static RTC_DATA_ATTR uint32_t s_boot_count;
+static RTC_DATA_ATTR uint8_t s_last_reset;      /* последний сброс, не считая пробуждения из сна */
+static esp_reset_reason_t s_cur_reset;
 #if HAS_LED
 static bool s_led_init;
 #endif
@@ -31,10 +34,54 @@ static void release_pins(void) {
     }
 }
 
+static const char *reset_name(esp_reset_reason_t r) {
+    switch (r) {
+    case ESP_RST_POWERON:    return "poweron";      /* на ESP32 сюда же попадает кнопка RST (EN) */
+    case ESP_RST_EXT:        return "ext";
+    case ESP_RST_SW:         return "sw";
+    case ESP_RST_PANIC:      return "panic";
+    case ESP_RST_INT_WDT:    return "int_wdt";
+    case ESP_RST_TASK_WDT:   return "task_wdt";
+    case ESP_RST_WDT:        return "wdt";
+    case ESP_RST_DEEPSLEEP:  return "deepsleep";
+    case ESP_RST_BROWNOUT:   return "brownout";
+    case ESP_RST_SDIO:       return "sdio";
+    case ESP_RST_USB:        return "usb";
+    case ESP_RST_JTAG:       return "jtag";
+    case ESP_RST_EFUSE:      return "efuse";
+    case ESP_RST_PWR_GLITCH: return "pwr_glitch";
+    case ESP_RST_CPU_LOCKUP: return "cpu_lockup";
+    default:                 return "unknown";
+    }
+}
+
+const char *power_reset_reason(void) {
+    return reset_name((esp_reset_reason_t)s_last_reset);
+}
+
+bool power_reset_abnormal(void) {
+    switch (s_cur_reset) {
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_BROWNOUT:
+    case ESP_RST_PWR_GLITCH:
+    case ESP_RST_CPU_LOCKUP:
+        return true;
+    default:
+        return false;
+    }
+}
+
 wake_cause_t power_wake_cause(void) {
     wake_cause_t cause;
 
     s_boot_count++;
+    s_cur_reset = esp_reset_reason();
+    if (s_cur_reset != ESP_RST_DEEPSLEEP) {
+        s_last_reset = s_cur_reset;
+    }
 
     switch (esp_sleep_get_wakeup_cause()) {
     case ESP_SLEEP_WAKEUP_TIMER:
@@ -55,7 +102,7 @@ wake_cause_t power_wake_cause(void) {
     }
 
     release_pins();
-    ESP_LOGI(TAG, "wake cause=%d boot=%u", cause, (unsigned)s_boot_count);
+    ESP_LOGI(TAG, "wake cause=%d boot=%u reset=%s", cause, (unsigned)s_boot_count, reset_name(s_cur_reset));
     return cause;
 }
 

@@ -18,6 +18,12 @@ typedef enum {
 wake_cause_t power_wake_cause(void);
 uint32_t power_boot_count(void);
 
+/* Причина последнего сброса, не считая пробуждений из глубокого сна (переживает сон):
+   poweron, ext, sw, panic, int_wdt, task_wdt, wdt, brownout, ... */
+const char *power_reset_reason(void);
+/* true, если текущий запуск - авария: panic, watchdog, brownout, lockup */
+bool power_reset_abnormal(void);
+
 /* Монотонное время RTC в мс: идёт и в глубоком сне, сбрасывается только по питанию/RST */
 uint64_t power_now_ms(void);
 

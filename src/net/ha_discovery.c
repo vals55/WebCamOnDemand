@@ -55,7 +55,6 @@ static esp_err_t pub_switch(const app_config_t *c, const char *obj, const char *
     snprintf(x, sizeof(x), "\"command_topic\":\"%s/cmd/%s\",\"state_topic\":\"%s/state\","
              "\"value_template\":\"{{ value_json.%s }}\",\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
              "\"state_on\":\"ON\",\"state_off\":\"OFF\",\"icon\":\"mdi:%s\",\"retain\":true",
-            //  "\"state_on\":\"ON\",\"state_off\":\"OFF\",\"optimistic\":true,\"icon\":\"mdi:%s\",\"retain\":true",
              c->mqtt_prefix, obj, c->mqtt_prefix, obj, icon);
     return pub(c, "switch", obj, name, x);
 }
@@ -106,6 +105,10 @@ void ha_discovery_publish(const app_config_t *c) {
              "\"value_template\":\"{{ value_json.timer_interval }}\",\"min\":10,\"max\":86400,"
              "\"step\":10,\"unit_of_measurement\":\"s\",\"mode\":\"box\",\"optimistic\":true,\"retain\":true", p, p);
     err |= pub(c, "number", "interval", "Timer interval", x);
+
+    snprintf(x, sizeof(x), "\"state_topic\":\"%s/state\",\"value_template\":\"{{ value_json.reset }}\","
+             "\"icon\":\"mdi:restart-alert\",\"entity_category\":\"diagnostic\"", p);
+    err |= pub(c, "sensor", "reset", "Reset reason", x);
 
     err |= pub_switch(c, "hflip", "Flip horizontal", "flip-horizontal");
     err |= pub_switch(c, "vflip", "Flip vertical", "flip-vertical");
