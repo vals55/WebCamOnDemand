@@ -21,21 +21,18 @@ static const char *TAG = "capture";
 #define CLEAN_MARGIN_MB  50   /* при очистке освобождаем на столько больше порога */
 #define VIDEO_KB_PER_FR  40   /* оценка размера кадра видео */
 
-static void set_file(cap_result_t *r, const char *path)
-{
+static void set_file(cap_result_t *r, const char *path) {
     size_t pre = strlen(SD_MOUNT) + 1;
     const char *rel = strlen(path) > pre ? path + pre : path;
     strlcpy(r->file, rel, sizeof(r->file));
 }
 
-static int video_need_mb(const app_config_t *c)
-{
+static int video_need_mb(const app_config_t *c) {
     uint32_t mb = ((uint32_t)c->video_len_s * c->video_fps * VIDEO_KB_PER_FR) / 1024 + 1;
     return mb > 2000 ? 2000 : (int)mb;
 }
 
-static esp_err_t do_photo(const app_config_t *c, bool keep, bool sd_ok, cap_result_t *r)
-{
+static esp_err_t do_photo(const app_config_t *c, bool keep, bool sd_ok, cap_result_t *r) {
     char path[96];
     camera_fb_t *fb = app_cam_photo_begin();
     esp_err_t err = ESP_OK;
@@ -72,28 +69,22 @@ static esp_err_t do_photo(const app_config_t *c, bool keep, bool sd_ok, cap_resu
     return err;
 }
 
-static esp_err_t do_video(const app_config_t *c, cap_result_t *r)
-{
+static esp_err_t do_video(const app_config_t *c, cap_result_t *r) {
     char path[96];
     camera_fb_t *fb;
     avi_t *a;
     int64_t period = 1000000LL / c->video_fps;
     int64_t start, next, now, total = (int64_t)c->video_len_s * 1000000LL;
     uint32_t max_frames = (uint32_t)c->video_len_s * c->video_fps + 8;
-    uint32_t frames = 0, w, h;
+    uint32_t frames = 0;
+    uint16_t w, h;
     uint64_t bytes = 0;
     esp_err_t err = ESP_OK, ce;
 
     fb = app_cam_capture();
     if (!fb) return ESP_FAIL;
     sd_make_name(path, sizeof(path), "VID", "avi");
-    {
-        uint16_t ow, oh;
-
-        app_rot_dims(fb->width, fb->height, c->rotate, ROT_VIDEO_MAX, &ow, &oh);
-        w = ow;
-        h = oh;
-    }
+    app_rot_dims(fb->width, fb->height, c->rotate, ROT_VIDEO_MAX, &w, &h);
     a = avi_open(path, w, h, max_frames);
     app_cam_release(fb);
     if (!a) return ESP_ERR_NO_MEM;
@@ -108,10 +99,10 @@ static esp_err_t do_video(const app_config_t *c, cap_result_t *r)
         }
         if (c->rotate) {
             size_t rl = 0;
-            uint8_t *ro = app_rot_try(fb, c->rotate, c->jpeg_quality, ROT_VIDEO_MAX, &rl);
+            uint8_t *ro = app_rot_try(fb, c->rotate, c->stream_quality, ROT_VIDEO_MAX, &rl);
 
             app_cam_release(fb);
-            if (!ro) {              /* кадр другого размера в AVI не положить */
+            if (!ro) {
                 err = ESP_FAIL;
                 break;
             }
@@ -148,8 +139,7 @@ static esp_err_t do_video(const app_config_t *c, cap_result_t *r)
     return err;
 }
 
-esp_err_t capture_run(const app_config_t *c, cap_action_t act, bool keep_jpeg, cap_result_t *r)
-{
+esp_err_t capture_run(const app_config_t *c, cap_action_t act, bool keep_jpeg, cap_result_t *r) {
     esp_err_t err = ESP_OK, e;
     bool mounted, writable;
     bool want_video = (act == ACT_VIDEO || act == ACT_BOTH);
@@ -183,7 +173,8 @@ esp_err_t capture_run(const app_config_t *c, cap_action_t act, bool keep_jpeg, c
         goto out;               /* снимать некуда: камеру не включаем */
     }
 
-    e = app_cam_init(c, false);
+    /* Видео - в разрешении и качестве стрима, фото - в своих настройках */
+    e = app_cam_init(c, want_video && writable);
     if (e != ESP_OK) {
         err = e;
         goto out;
@@ -205,8 +196,7 @@ out:
     return err;
 }
 
-void capture_free(cap_result_t *r)
-{
+void capture_free(cap_result_t *r) {
     free(r->jpeg);
     r->jpeg = NULL;
     r->jpeg_len = 0;

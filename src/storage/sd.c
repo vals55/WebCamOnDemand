@@ -211,22 +211,20 @@ void sd_make_name(char *out, size_t n, const char *prefix, const char *ext) {
         snprintf(out, n, "%s/%s_%06u.%s", dir, prefix,
                  (unsigned)power_boot_count(), ext);
     }
-    {
-        struct stat st;
-        char base[96];
-        char *dot;
+    struct stat st;
+    char base[96];
+    char *dot;
 
-        if (stat(out, &st) == 0) {
-            strlcpy(base, out, sizeof(base));
-            dot = strrchr(base, '.');
-            if (dot) {
-                *dot = '\0';
-            }
-            for (int i = 1; i < 100; i++) {
-                snprintf(out, n, "%s_%d.%s", base, i, ext);
-                if (stat(out, &st) != 0) {
-                    break;
-                }
+    if (stat(out, &st) == 0) {
+        strlcpy(base, out, sizeof(base));
+        dot = strrchr(base, '.');
+        if (dot) {
+            *dot = '\0';
+        }
+        for (int i = 1; i < 100; i++) {
+            snprintf(out, n, "%s_%d.%s", base, i, ext);
+            if (stat(out, &st) != 0) {
+                break;
             }
         }
     }

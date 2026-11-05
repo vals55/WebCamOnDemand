@@ -90,14 +90,16 @@ static const field_t FIELDS[] = {
        "Короткое нажатие: серверный режим. Удержание 3 с: этот портал"),
 
     HDR("Камера"),
-    F8(framesize, "Разрешение фото и видео", O_FS, NULL,
-       "Больше 1600x1200 только у OV5640. Для видео реальный FPS падает с ростом разрешения"),
-    F8(jpeg_quality, "Качество JPEG фото и видео", NULL, "min='4' max='63'",
+    F8(framesize, "Разрешение фото", O_FS, NULL,
+       "Только для снимков. Больше 1600x1200 только у OV5640"),
+    F8(jpeg_quality, "Качество JPEG фото", NULL, "min='4' max='63'",
        "4–63, меньше = лучше и крупнее файл. Для OV5640 рекомендуется 10–15"),
-    F8(stream_framesize, "Разрешение стрима", O_SFS, NULL, "1024x768 — около 8–12 fps по Wi-Fi"),
-    F8(stream_quality, "Качество JPEG стрима", NULL, "min='4' max='63'", "Рекомендуется 12–20"),
+    F8(stream_framesize, "Разрешение стрима и видео", O_SFS, NULL,
+       "Меньше разрешение = выше FPS (800x600 — около 7 кадров/сек на OV5640)"),
+    F8(stream_quality, "Качество JPEG стрима и видео", NULL, "min='4' max='63'",
+       "4–63, меньше = лучше и крупнее файл. Рекомендуется 12–20"),
     F16(video_len_s, "Длина видео, с", "min='1' max='300'", "1–300"),
-    F8(video_fps, "FPS видео", NULL, "min='1' max='30'", "1–30, реальный FPS зависит от разрешения"),
+    F8(video_fps, "FPS видео", NULL, "min='1' max='30'", "1–30. Это верхний предел: реальный FPS ограничен разрешением стрима и видео"),
     FB(hflip, "Зеркало по горизонтали (фото, видео, стрим)", NULL),
     FB(vflip, "Переворот по вертикали (фото, видео, стрим)", "Оба пункта вместе = поворот на 180°"),
     F8(rotate, "Поворот на 90°", O_ROT, NULL,
@@ -338,7 +340,7 @@ static const char *hint_html(const field_t *f, char *buf, size_t n) {
 /* Одно поле формы в line */
 static void render_field(const field_t *f, char *line, size_t ln, char *esc, size_t en) {
     const uint8_t *p = (const uint8_t *)s_cfg + f->off;
-    char hb[160];
+    char hb[320];
     const char *at = f->attrs ? f->attrs : "";
     const char *h = hint_html(f, hb, sizeof(hb));
 
